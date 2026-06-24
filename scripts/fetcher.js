@@ -188,73 +188,75 @@ function buildGroups(raw) {
   return result;
 }
 
-// Photos uploaded via wpDiscuz's media addon are NOT in the REST content; they
-// only appear in the rendered HTML page. Fetch it (the WordPress page sets a
-// cookie then 302-redirects to itself, so follow redirects manually carrying the
-// cookie jar) and map each comment id to its attached full-size image URLs.
-async function fetchHtml(url) {
-  const jar = new Map();
-  let cur = url;
-  for (let i = 0; i < 8; i++) {
-    const cookie = [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
-    const res = await fetch(cur, {
-      redirect: "manual",
-      headers: { ...headers, Accept: "text/html", ...(cookie ? { Cookie: cookie } : {}) },
-    });
-    for (const c of res.headers.getSetCookie?.() ?? []) {
-      const [pair] = c.split(";");
-      const idx = pair.indexOf("=");
-      if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+// Photos uploaded via wpDiscuz's media addon are NOT in the REST comment content.
+// But every such upload IS a WordPress media item, and its filename carries the
+// upload Unix timestamp (e.g. "DSC_0091-1782276814.7006-scaled.jpg"). A wmu photo
+// is uploaded at the same instant its comment is posted, so we match each media
+// item to the comment whose timestamp it's within a few seconds of. This catches
+// every photo (newest, oldest, replies) with no scraping/pagination/per-comment
+// calls. Validated against the rendered page: matches are exact (~1s apart).
+
+const ts = (s) => Date.parse(s + "+09:00"); // site dates are JST-local, naive
+
+// Only wmu comment attachments have a "-<10+ digit unix ts>.<frac>" in the name;
+// plain-named media are article/blog images, not user photos.
+const WMU_NAME = /-\d{10,}\.\d+/;
+
+async function fetchMedia(oldestMs) {
+  const out = [];
+  for (let page = 1; page <= 5; page++) {
+    let data;
+    try {
+      ({ data } = await getJson(
+        `${API}/media?per_page=100&page=${page}&orderby=date&order=desc&_fields=id,date,source_url`
+      ));
+    } catch (_) { break; }
+    if (!Array.isArray(data) || !data.length) break;
+    for (const m of data) {
+      if (m.source_url && WMU_NAME.test(m.source_url)) out.push({ ms: ts(m.date), url: m.source_url });
     }
-    if (res.status >= 300 && res.status < 400) {
-      cur = new URL(res.headers.get("location"), cur).toString();
-      continue;
-    }
-    if (!res.ok) throw new Error(`HTML HTTP ${res.status}`);
-    return res.text();
+    const last = data[data.length - 1];
+    if (last && ts(last.date) < oldestMs) break; // covered the window's time range
   }
-  throw new Error("too many redirects");
+  return out;
 }
 
-function parseAttachments(html) {
+// Assign each photo to the comment it's closest to in time (≤8s), so each image
+// lands on exactly one comment.
+function matchMedia(media, comments) {
   const map = {};
-  const re = /data-comment-id='(\d+)'/g;
-  const marks = [];
-  let m;
-  while ((m = re.exec(html))) marks.push({ id: m[1], pos: m.index });
-  for (let k = 0; k < marks.length; k++) {
-    const end = k + 1 < marks.length ? marks[k + 1].pos : Math.min(html.length, marks[k].pos + 8000);
-    const seg = html.slice(marks[k].pos, end);
-    const reA = /<a\s+href='([^']+)'[^>]*class='[^']*wmu-attached-image-link/g;
-    let a;
-    const urls = [];
-    while ((a = reA.exec(seg))) urls.push(a[1].replace(/&#0?38;/g, "&"));
-    if (urls.length) map[marks[k].id] = (map[marks[k].id] || []).concat(urls);
+  for (const m of media) {
+    let best = null, bd = 8001;
+    for (const c of comments) {
+      const d = Math.abs(c.ms - m.ms);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) (map[best.id] = map[best.id] || []).push(m.url);
   }
   return map;
 }
 
 async function fetchThread(thread) {
+  const { res } = await getJson(commentsUrl(thread.postId));
+  const total = res.headers.get("x-wp-total");
   const raw = await fetchRaw(thread);
+  return { thread, total, raw };
+}
+
+function assembleThread({ thread, total, raw }, imgByComment) {
   const groups = buildGroups(raw);
-
-  // Merge in wpDiscuz attachment photos (best-effort; ignore HTML failures).
-  try {
-    const attach = parseAttachments(await fetchHtml(thread.url));
-    for (const g of groups) {
-      for (const c of g.comments) {
-        const extra = attach[c.id];
-        if (extra) c.images = [...new Set([...c.images, ...extra])];
-      }
+  for (const g of groups) {
+    for (const c of g.comments) {
+      const extra = imgByComment[c.id];
+      if (extra) c.images = [...new Set([...c.images, ...extra])];
     }
-  } catch (_) { /* attachments are a bonus; REST data still stands */ }
-
+  }
   const allIds = groups.flatMap((g) => g.comments.map((c) => c.id));
   return {
     slug: thread.slug,
     url: thread.url + "#help",
     label: thread.label,
-    totalCommentsText: "", // filled below from the X-WP-Total header
+    totalCommentsText: total ? Number(total).toLocaleString("en-US") : "",
     latestCommentId: allIds.length ? Math.max(...allIds) : 0,
     groups,
     checkedAt: new Date().toISOString(),
@@ -263,27 +265,40 @@ async function fetchThread(thread) {
 }
 
 async function fetchAll() {
-  const results = [];
+  // 1) Fetch each thread's comments (keep the raw rows for global photo matching).
+  const fetched = [];
   for (const t of THREADS) {
     try {
-      // grab the total-count header alongside the main fetch
-      const { res } = await getJson(commentsUrl(t.postId));
-      const total = res.headers.get("x-wp-total");
-      const out = await fetchThread(t);
-      out.totalCommentsText = total ? Number(total).toLocaleString("en-US") : "";
-      results.push(out);
+      fetched.push({ ok: true, data: await fetchThread(t) });
     } catch (err) {
-      results.push({
-        slug: t.slug,
-        url: t.url + "#help",
-        label: t.label,
-        ok: false,
-        error: String(err.message || err),
-        checkedAt: new Date().toISOString(),
-      });
+      fetched.push({ ok: false, thread: t, error: String(err.message || err) });
     }
   }
-  return results;
+
+  // 2) Match wmu photos to comments by upload timestamp (global, across threads).
+  const allComments = [];
+  for (const f of fetched) if (f.ok) for (const c of f.data.raw) allComments.push({ id: c.id, ms: ts(c.date) });
+  let imgByComment = {};
+  if (allComments.length) {
+    const oldest = Math.min(...allComments.map((c) => c.ms));
+    try {
+      imgByComment = matchMedia(await fetchMedia(oldest), allComments);
+    } catch (_) { /* photos are a bonus; comment data still stands */ }
+  }
+
+  // 3) Assemble each thread with its photos merged in.
+  return fetched.map((f) =>
+    f.ok
+      ? assembleThread(f.data, imgByComment)
+      : {
+          slug: f.thread.slug,
+          url: f.thread.url + "#help",
+          label: f.thread.label,
+          ok: false,
+          error: f.error,
+          checkedAt: new Date().toISOString(),
+        }
+  );
 }
 
 module.exports = { THREADS, fetchThread, fetchAll, buildGroups };

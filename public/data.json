@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-24T14:06:32.412Z",
+  "generatedAt": "2026-06-24T14:23:19.845Z",
   "threads": [
     {
       "slug": "yodobashi",
       "url": "https://gamenv.net/tc/yodobashi/#help",
       "label": "ヨドバシカメラ",
-      "totalCommentsText": "37,616",
-      "latestCommentId": 323813,
+      "totalCommentsText": "37,617",
+      "latestCommentId": 323818,
       "groups": [
         {
           "rootId": 323775,
@@ -57,7 +57,7 @@
               "date": "6月24日 16:30",
               "text": "🔮",
               "images": [
-                "https://gamenv.net/tc/wp-content/uploads/2026/06/DSC_0092-1782286207.5386-scaled.jpg?v=1782292974"
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/DSC_0092-1782286207.5386-scaled.jpg"
               ],
               "depth": 0,
               "replyTo": null
@@ -186,7 +186,7 @@
         },
         {
           "rootId": 323667,
-          "latestId": 323811,
+          "latestId": 323818,
           "comments": [
             {
               "id": 323667,
@@ -220,6 +220,15 @@
               "author": "匿名",
               "date": "6月24日 21:33",
               "text": "無し！帰ります(T ^ T)",
+              "images": [],
+              "depth": 1,
+              "replyTo": "匿名"
+            },
+            {
+              "id": 323818,
+              "author": "通りすがり",
+              "date": "6月24日 23:13",
+              "text": "2日連続で無いの珍しいですね🤔\n\n明日あたり天気も悪そうだし、なんか余ってる在庫あったらなんか出ないかな\n\n久しぶりに帰りに寄ってみようかしら🤔",
               "images": [],
               "depth": 1,
               "replyTo": "匿名"
@@ -268,7 +277,9 @@
               "author": "なすび",
               "date": "6月24日 15:19",
               "text": "久しぶりに買えました。\n\n小出しっぽいですかね。",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/1000020532-1782281953.2456-scaled.jpg"
+              ],
               "depth": 1,
               "replyTo": "なすび"
             },
@@ -328,7 +339,9 @@
               "author": "匿名",
               "date": "6月24日 19:21",
               "text": "😴完売\n\n遊戯王はまだあります",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_5298-1782296510.6444-scaled.jpeg"
+              ],
               "depth": 1,
               "replyTo": "トレカナビ管理人"
             },
@@ -804,7 +817,9 @@
               "author": "匿名",
               "date": "6月24日 12:21",
               "text": "6/24上野",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/Effect_20260624_121031-1782271318.7586.jpg"
+              ],
               "depth": 0,
               "replyTo": null
             },
@@ -855,7 +870,9 @@
               "author": "ざざざ",
               "date": "6月24日 10:52",
               "text": "倉庫現状🥷",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_0979-1782265926.9742-scaled.jpeg"
+              ],
               "depth": 0,
               "replyTo": null
             },
@@ -931,15 +948,15 @@
           ]
         }
       ],
-      "checkedAt": "2026-06-24T14:06:27.930Z",
+      "checkedAt": "2026-06-24T14:23:19.843Z",
       "ok": true
     },
     {
       "slug": "biccamera",
       "url": "https://gamenv.net/tc/biccamera/#help",
       "label": "ビックカメラ",
-      "totalCommentsText": "15,037",
-      "latestCommentId": 323816,
+      "totalCommentsText": "15,038",
+      "latestCommentId": 323819,
       "groups": [
         {
           "rootId": 323773,
@@ -1245,7 +1262,7 @@
         },
         {
           "rootId": 323598,
-          "latestId": 323816,
+          "latestId": 323819,
           "comments": [
             {
               "id": 323598,
@@ -1579,6 +1596,15 @@
               "images": [],
               "depth": 1,
               "replyTo": "匿名"
+            },
+            {
+              "id": 323819,
+              "author": "通りすがり",
+              "date": "6月24日 23:17",
+              "text": "私も基本的にはポケカしか買わないのでワンピは詳しく無いから気にはなります🤔\n\n推測ですけどVCの元締めがパックだけでも統一パックとして買い取るからじゃないですかね🤔\n\nまあVCのことはよくわからんです笑",
+              "images": [],
+              "depth": 1,
+              "replyTo": "匿名"
             }
           ]
         },
@@ -1592,7 +1618,7 @@
               "date": "6月24日 13:53",
               "text": "はーち",
               "images": [
-                "https://gamenv.net/tc/wp-content/uploads/2026/06/DSC_0091-1782276814.7006-scaled.jpg?v=1782282174"
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/DSC_0091-1782276814.7006-scaled.jpg"
               ],
               "depth": 0,
               "replyTo": null
@@ -1611,7 +1637,9 @@
               "author": "なのん",
               "date": "6月24日 19:16",
               "text": "始まってました！",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/DSC_0093-1782296208.0178-scaled.jpg"
+              ],
               "depth": 1,
               "replyTo": "トレカナビ管理人"
             }
@@ -1750,7 +1778,7 @@
           ]
         }
       ],
-      "checkedAt": "2026-06-24T14:06:30.403Z",
+      "checkedAt": "2026-06-24T14:23:19.844Z",
       "ok": true
     },
     {
@@ -1848,7 +1876,7 @@
               "date": "6月24日 11:27",
               "text": "駅長\n\n🥷10P\n\n並び無し",
               "images": [
-                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_3951-1782268079.3715.jpeg?v=1782271371"
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_3951-1782268079.3715.jpeg"
               ],
               "depth": 0,
               "replyTo": null
@@ -1891,7 +1919,7 @@
               "date": "6月24日 09:50",
               "text": "羽田空港第2ターミナル6/24",
               "images": [
-                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_0976-1782262225.4817-scaled.jpeg?v=1782271376"
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_0976-1782262225.4817-scaled.jpeg"
               ],
               "depth": 0,
               "replyTo": null
@@ -1926,7 +1954,7 @@
               "date": "6月24日 09:05",
               "text": "玉PLUS6/24\n\n補充前",
               "images": [
-                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_3939-1782259534.8541.jpeg?v=1782260571"
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_3939-1782259534.8541.jpeg"
               ],
               "depth": 0,
               "replyTo": null
@@ -2050,7 +2078,9 @@
               "author": "トレカナビ管理人",
               "date": "6月23日 14:12",
               "text": "ラウンジ継続です！",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_3904-1782191525.2052.jpeg"
+              ],
               "depth": 1,
               "replyTo": "特盛"
             },
@@ -2122,7 +2152,9 @@
               "author": "匿名",
               "date": "6月22日 19:36",
               "text": "流山スタンド\n\n🥷😘👀黒😴サ　全て🍛状態\n\n最近補充あった瞬間にVC大量発生してるらしい😭",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_5296-1782124598.202-scaled.jpeg"
+              ],
               "depth": 0,
               "replyTo": null
             }
@@ -2389,7 +2421,9 @@
               "author": "97",
               "date": "6月22日 09:43",
               "text": "シノビとぜろが売ってるねー\n\n羽田空港",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_2517-1782089005.9314-scaled.jpeg"
+              ],
               "depth": 0,
               "replyTo": null
             }
@@ -2404,7 +2438,9 @@
               "author": "一時帰国者",
               "date": "6月22日 09:26",
               "text": "羽田です\n\n福岡行ってきまーす",
-              "images": [],
+              "images": [
+                "https://gamenv.net/tc/wp-content/uploads/2026/06/IMG_6597-1782087988.649-scaled.jpeg"
+              ],
               "depth": 0,
               "replyTo": null
             },
@@ -2561,7 +2597,7 @@
           ]
         }
       ],
-      "checkedAt": "2026-06-24T14:06:32.412Z",
+      "checkedAt": "2026-06-24T14:23:19.845Z",
       "ok": true
     }
   ]
