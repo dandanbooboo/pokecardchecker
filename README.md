@@ -20,7 +20,7 @@ Watched threads:
 3. `public/index.html` is a static dashboard that reads `data.json` and marks a
    thread **NEW** when its latest comment id is higher than the one this browser
    last marked read (stored in `localStorage`).
-4. `.github/workflows/update.yml` runs every 15 minutes, regenerates
+4. `.github/workflows/update.yml` runs every 5 minutes, regenerates
    `data.json`, and deploys to Firebase Hosting.
 
 ## Local use

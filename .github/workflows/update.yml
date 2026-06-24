@@ -2,8 +2,8 @@ name: update-threads
 
 on:
   schedule:
-    # Every 15 minutes (UTC). GitHub may delay scheduled runs under load.
-    - cron: "*/15 * * * *"
+    # Every 5 minutes (UTC). GitHub may delay scheduled runs under load.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 # Avoid overlapping runs if one is slow.
