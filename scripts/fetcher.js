@@ -109,15 +109,21 @@ async function fetchRaw(thread) {
   }
   if (!Array.isArray(data)) throw new Error("unexpected API response");
 
+  // Walk up the full ancestor chain (reply threads here can be 9+ deep). Each
+  // iteration climbs one level; keep going until no parent is missing, so every
+  // reply roots at its true top-level comment instead of being shown as its own
+  // thread. Capped to avoid an unbounded loop.
   const have = new Set(data.map((c) => c.id));
-  for (let iter = 0; iter < 2; iter++) {
+  for (let iter = 0; iter < 15; iter++) {
     const missing = [...new Set(data.filter((c) => c.parent && !have.has(c.parent)).map((c) => c.parent))].slice(0, 100);
     if (!missing.length) break;
     const { data: extra } = await getJson(
       `${API}/comments?include=${missing.join(",")}&per_page=100&_fields=${FIELDS}`
     );
     if (!Array.isArray(extra) || !extra.length) break;
-    for (const c of extra) if (!have.has(c.id)) { data.push(c); have.add(c.id); }
+    let added = false;
+    for (const c of extra) if (!have.has(c.id)) { data.push(c); have.add(c.id); added = true; }
+    if (!added) break;
   }
   return data;
 }
@@ -157,9 +163,19 @@ function buildGroups(raw) {
 
   const result = [];
   for (const [rootId, nodes] of groups) {
+    // Match wpDiscuz: the root, then all replies FLATTENED to one level (not
+    // cascading), each tagged with the author it replied to ("返信 <name>").
     const comments = nodes
-      .map((n) => ({ id: n.id, author: n.author, date: n.date, text: n.text, images: n.images, depth: Math.min(depthOf(n), 4) }))
-      .sort((a, b) => a.id - b.id); // parent ids are always < child ids
+      .map((n) => ({
+        id: n.id,
+        author: n.author,
+        date: n.date,
+        text: n.text,
+        images: n.images,
+        depth: n.id === rootId ? 0 : 1,
+        replyTo: n.id !== rootId && map.has(n.parentId) ? map.get(n.parentId).author : null,
+      }))
+      .sort((a, b) => a.id - b.id); // parent ids are always < child ids (chronological)
     result.push({
       rootId,
       latestId: Math.max(...comments.map((c) => c.id)),

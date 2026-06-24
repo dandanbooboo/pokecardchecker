@@ -64,6 +64,7 @@
   }
   .c-meta { font-size: 11.5px; color: var(--sub); margin-bottom: 2px; }
   .c-meta .author { color: var(--ink); font-weight: 600; }
+  .c-meta .rt { color: #1a73e8; font-weight: 600; }
   .c-text { white-space: pre-wrap; word-break: break-word; }
   .imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .imgs a { display: block; }
@@ -147,9 +148,12 @@ function commentHTML(c, lastSeenId) {
         `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(u)}" alt="画像"></a>`).join("")}</div>`
     : "";
   const text = c.text ? `<div class="c-text">${esc(c.text)}</div>` : "";
+  const replyTag = c.replyTo
+    ? ` ・<span class="rt">返信 ${esc(c.replyTo)}</span>`
+    : (c.depth > 0 ? " ・返信" : "");
   return `<div class="cmt${fresh}${reply}"${indent}>
       <div class="c-meta"><span class="author">${esc(c.author)}</span>
-      <span class="tag">${esc(c.date)}${c.depth > 0 ? " ・返信" : ""}</span></div>
+      <span class="tag">${esc(c.date)}${replyTag}</span></div>
       ${text}${imgs}</div>`;
 }
 
