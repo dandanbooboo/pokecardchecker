@@ -1,16 +1,15 @@
-// Fetches gamenv.net threads via the WordPress REST comments API.
-// This returns clean JSON (top-level comments AND replies) ordered newest
-// first, with no cookie/redirect dance and no HTML scraping needed.
+// Fetches gamenv.net threads via the WordPress REST comments API and builds a
+// threaded structure (replies nested under their parent, like the real site).
+// Clean JSON, no cookie/redirect dance, no HTML scraping.
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 const API = "https://gamenv.net/tc/wp-json/wp/v2";
-const PER_PAGE = 60; // how many recent comments to pull per thread (max 100)
+const PER_PAGE = 60; // recent comments to pull per thread (max 100)
+const FIELDS = "id,parent,author_name,date,content";
 
-// The three threads we monitor. `postId` is the WordPress post the comment
-// thread belongs to (stable; resolvable via ?slug= if it ever changes).
 const THREADS = [
   { slug: "yodobashi", postId: 78763, url: "https://gamenv.net/tc/yodobashi/", label: "ヨドバシカメラ" },
   { slug: "biccamera", postId: 78776, url: "https://gamenv.net/tc/biccamera/", label: "ビックカメラ" },
@@ -19,86 +18,165 @@ const THREADS = [
 
 const headers = { "User-Agent": UA, Accept: "application/json" };
 
-// Resolve a post id from its slug as a fallback if the hard-coded id is wrong.
+async function getJson(url) {
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return { data: await res.json(), res };
+}
+
 async function resolvePostId(slug) {
-  const res = await fetch(`${API}/posts?slug=${encodeURIComponent(slug)}&_fields=id`, { headers });
-  if (!res.ok) throw new Error(`slug lookup HTTP ${res.status}`);
-  const arr = await res.json();
-  if (!Array.isArray(arr) || !arr.length) throw new Error(`no post for slug ${slug}`);
-  return arr[0].id;
+  const { data } = await getJson(`${API}/posts?slug=${encodeURIComponent(slug)}&_fields=id`);
+  if (!Array.isArray(data) || !data.length) throw new Error(`no post for slug ${slug}`);
+  return data[0].id;
 }
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", "#039": "'", nbsp: " " };
 
-// content.rendered is HTML; turn it into plain display text.
+function decodeEntities(s) {
+  return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+    if (ENTITIES[e]) return ENTITIES[e];
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+    }
+    return m;
+  });
+}
+
+// Pull user-posted photos. On this site images are posted as <a href> links to
+// gamenv uploads (and occasionally direct <img>). Auto-generated link-preview
+// thumbnails (s.wordpress.com mshots) are intentionally ignored.
+function extractImages(html) {
+  if (!html) return [];
+  const out = new Set();
+  // A real user photo: hosted on gamenv uploads, an image file, and NOT a
+  // resized thumbnail (-160x90 etc, which are auto link-preview/banner cards).
+  const isPhoto = (u) => {
+    try {
+      const url = new URL(u);
+      return (
+        /(^|\.)gamenv\.net$/i.test(url.hostname) &&
+        /\/wp-content\/uploads\//i.test(url.pathname) &&
+        /\.(?:jpe?g|png|gif|webp)$/i.test(url.pathname) &&
+        !/-\d+x\d+\.[a-z]+$/i.test(url.pathname)
+      );
+    } catch { return false; }
+  };
+  // Users post photos as a direct link to the image file, and Cocoon also
+  // auto-inserts an <img>. Collect both, then keep only genuine photo URLs.
+  const reLink = /<a\b[^>]*\bhref="([^"]+)"/gi;
+  const reImg = /<img\b[^>]*\bsrc="([^"]+)"/gi;
+  let m;
+  while ((m = reLink.exec(html))) { const u = decodeEntities(m[1]); if (isPhoto(u)) out.add(u); }
+  while ((m = reImg.exec(html))) { const u = decodeEntities(m[1]); if (isPhoto(u)) out.add(u); }
+  return [...out];
+}
+
+// content.rendered HTML -> plain display text (image links/tags removed, since
+// images are surfaced separately).
 function htmlToText(html) {
   if (!html) return "";
-  let hasImg = /<img\b/i.test(html);
-  let t = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<img\b[^>]*>/gi, " ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
-      if (ENTITIES[e]) return ENTITIES[e];
-      if (e[0] === "#") {
-        const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return Number.isFinite(n) ? String.fromCodePoint(n) : m;
-      }
-      return m;
-    })
+  return decodeEntities(
+    html
+      .replace(/<a\b[^>]*\bhref="[^"]+\.(?:jpe?g|png|gif|webp)"[^>]*>.*?<\/a>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<img\b[^>]*>/gi, " ")
+      .replace(/<[^>]+>/g, "")
+  )
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (hasImg) t = (t ? t + " " : "") + "🖼";
-  return t;
 }
 
 // "2026-06-24T21:40:59" (site-local JST) -> "6月24日 21:40"
 function formatDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || "");
-  if (!m) return iso || "";
-  return `${+m[2]}月${+m[3]}日 ${m[4]}:${m[5]}`;
+  return m ? `${+m[2]}月${+m[3]}日 ${m[4]}:${m[5]}` : iso || "";
 }
 
 function commentsUrl(postId) {
-  return `${API}/comments?post=${postId}&per_page=${PER_PAGE}&order=desc&orderby=date&_fields=id,parent,author_name,date,content`;
+  return `${API}/comments?post=${postId}&per_page=${PER_PAGE}&order=desc&orderby=date&_fields=${FIELDS}`;
 }
 
-async function fetchThread(thread) {
-  let res = await fetch(commentsUrl(thread.postId), { headers });
-
-  // Self-heal if the hard-coded post id stopped matching.
-  if (res.ok) {
-    const peek = await res.clone().json();
-    if (!Array.isArray(peek) || peek.length === 0) {
-      const pid = await resolvePostId(thread.slug);
-      res = await fetch(commentsUrl(pid), { headers });
-    }
+// Fetch recent comments plus any missing ancestor comments, so every reply can
+// be nested under its real parent even if the parent is older than the window.
+async function fetchRaw(thread) {
+  let { data } = await getJson(commentsUrl(thread.postId));
+  if (Array.isArray(data) && data.length === 0) {
+    const pid = await resolvePostId(thread.slug);
+    ({ data } = await getJson(commentsUrl(pid)));
   }
-  if (!res.ok) throw new Error(`comments HTTP ${res.status}`);
+  if (!Array.isArray(data)) throw new Error("unexpected API response");
 
-  const total = res.headers.get("x-wp-total");
-  const raw = await res.json();
-  if (!Array.isArray(raw)) throw new Error("unexpected API response");
+  const have = new Set(data.map((c) => c.id));
+  for (let iter = 0; iter < 2; iter++) {
+    const missing = [...new Set(data.filter((c) => c.parent && !have.has(c.parent)).map((c) => c.parent))].slice(0, 100);
+    if (!missing.length) break;
+    const { data: extra } = await getJson(
+      `${API}/comments?include=${missing.join(",")}&per_page=100&_fields=${FIELDS}`
+    );
+    if (!Array.isArray(extra) || !extra.length) break;
+    for (const c of extra) if (!have.has(c.id)) { data.push(c); have.add(c.id); }
+  }
+  return data;
+}
 
-  const comments = raw
-    .map((c) => ({
+// Group flat comments into threads: each group is a root comment followed by its
+// descendants (depth-tagged), ordered chronologically. Groups are sorted by most
+// recent activity so threads with new replies surface first.
+function buildGroups(raw) {
+  const map = new Map();
+  for (const c of raw) {
+    map.set(c.id, {
       id: c.id,
+      parentId: c.parent || 0,
       author: (c.author_name || "").trim() || "匿名",
       date: formatDate(c.date),
       text: htmlToText(c.content && c.content.rendered),
-      isReply: (c.parent || 0) > 0,
-    }))
-    .sort((a, b) => b.id - a.id);
+      images: extractImages(c.content && c.content.rendered),
+    });
+  }
+  const rootOf = (node) => {
+    let cur = node, g = 0;
+    while (cur.parentId && map.has(cur.parentId) && g++ < 30) cur = map.get(cur.parentId);
+    return cur;
+  };
+  const depthOf = (node) => {
+    let d = 0, cur = node, g = 0;
+    while (cur.parentId && map.has(cur.parentId) && g++ < 30) { cur = map.get(cur.parentId); d++; }
+    return d;
+  };
 
+  const groups = new Map();
+  for (const node of map.values()) {
+    const root = rootOf(node);
+    if (!groups.has(root.id)) groups.set(root.id, []);
+    groups.get(root.id).push(node);
+  }
+
+  const result = [];
+  for (const [, nodes] of groups) {
+    const comments = nodes
+      .map((n) => ({ id: n.id, author: n.author, date: n.date, text: n.text, images: n.images, depth: Math.min(depthOf(n), 4) }))
+      .sort((a, b) => a.id - b.id); // parent ids are always < child ids
+    result.push({ latestId: Math.max(...comments.map((c) => c.id)), comments });
+  }
+  result.sort((a, b) => b.latestId - a.latestId);
+  return result;
+}
+
+async function fetchThread(thread) {
+  const raw = await fetchRaw(thread);
+  const groups = buildGroups(raw);
+  const allIds = groups.flatMap((g) => g.comments.map((c) => c.id));
   return {
     slug: thread.slug,
     url: thread.url + "#help",
     label: thread.label,
-    totalCommentsText: total ? Number(total).toLocaleString("en-US") : "",
-    latestCommentId: comments.length ? comments[0].id : 0,
-    recent: comments,
+    totalCommentsText: "", // filled below from the X-WP-Total header
+    latestCommentId: allIds.length ? Math.max(...allIds) : 0,
+    groups,
     checkedAt: new Date().toISOString(),
     ok: true,
   };
@@ -108,7 +186,12 @@ async function fetchAll() {
   const results = [];
   for (const t of THREADS) {
     try {
-      results.push(await fetchThread(t));
+      // grab the total-count header alongside the main fetch
+      const { res } = await getJson(commentsUrl(t.postId));
+      const total = res.headers.get("x-wp-total");
+      const out = await fetchThread(t);
+      out.totalCommentsText = total ? Number(total).toLocaleString("en-US") : "";
+      results.push(out);
     } catch (err) {
       results.push({
         slug: t.slug,
@@ -123,7 +206,7 @@ async function fetchAll() {
   return results;
 }
 
-module.exports = { THREADS, fetchThread, fetchAll };
+module.exports = { THREADS, fetchThread, fetchAll, buildGroups };
 
 if (require.main === module) {
   fetchAll()

@@ -8,7 +8,7 @@
 <style>
   :root {
     --bg: #f4f5f7; --card: #fff; --ink: #1a1c1e; --sub: #5f6368;
-    --line: #e3e5e8; --accent: #b3261e; --new: #d93025; --reply: #f1f3f4;
+    --line: #e3e5e8; --accent: #b3261e; --new: #d93025; --gap: #eef0f2;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
@@ -18,12 +18,12 @@
   }
   header {
     position: sticky; top: 0; z-index: 5; background: var(--accent); color: #fff;
-    padding: 12px 16px calc(12px + env(safe-area-inset-top, 0)); padding-top: calc(12px + env(safe-area-inset-top, 0));
+    padding: calc(12px + env(safe-area-inset-top, 0)) 16px 12px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     box-shadow: 0 1px 4px rgba(0,0,0,.15);
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 700; }
-  header .sub { font-size: 11px; opacity: .85; font-weight: 400; }
+  header .sub { font-size: 11px; opacity: .85; }
   .btn {
     border: 0; border-radius: 999px; padding: 7px 13px; font-size: 13px; font-weight: 600;
     background: rgba(255,255,255,.18); color: #fff; cursor: pointer;
@@ -42,7 +42,7 @@
   }
   .card.has-new { border-color: var(--new); box-shadow: 0 0 0 1px var(--new); }
   .card-head {
-    display: flex; align-items: center; gap: 8px; padding: 13px 15px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; padding: 13px 15px;
     border-bottom: 1px solid var(--line);
   }
   .card-head .name { font-weight: 700; font-size: 16px; flex: 1; }
@@ -51,35 +51,39 @@
     padding: 2px 8px; border-radius: 999px; letter-spacing: .3px;
   }
   .meta { font-size: 11.5px; color: var(--sub); }
-  .feed { list-style: none; margin: 0; padding: 0; }
-  .feed li {
-    padding: 10px 15px; border-bottom: 1px solid var(--line); font-size: 14px;
+
+  .feed { }
+  .group { border-bottom: 6px solid var(--gap); }
+  .group:last-child { border-bottom: 0; }
+  .cmt { padding: 10px 15px; border-top: 1px solid var(--line); font-size: 14px; }
+  .group > .cmt:first-child { border-top: 0; }
+  .cmt.reply { border-left: 3px solid #dadce0; }
+  .cmt.fresh { background: #fff6f5; }
+  .cmt.fresh .c-meta::before {
+    content: "NEW"; color: var(--new); font-weight: 700; font-size: 10px; margin-right: 6px;
   }
-  .feed li:last-child { border-bottom: 0; }
-  .feed li.reply .c-text { padding-left: 11px; border-left: 2px solid #d2d5d9; }
-  .feed li.fresh { background: #fff6f5; }
-  .feed li.fresh::before {
-    content: "NEW"; color: var(--new); font-weight: 700; font-size: 10px;
-    margin-right: 6px; vertical-align: 1px;
-  }
-  .feed:not(.expanded) li.extra { display: none; }
-  .more {
-    width: 100%; border: 0; border-top: 1px solid var(--line);
-    background: var(--card); color: var(--accent); font-weight: 600;
-    font-size: 13px; padding: 12px; cursor: pointer;
-  }
-  .more:active { background: #faf0ef; }
   .c-meta { font-size: 11.5px; color: var(--sub); margin-bottom: 2px; }
   .c-meta .author { color: var(--ink); font-weight: 600; }
-  .c-meta .tag { color: var(--sub); }
   .c-text { white-space: pre-wrap; word-break: break-word; }
-  .card-foot { padding: 10px 15px; display: flex; gap: 10px; align-items: center; }
+  .imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .imgs a { display: block; }
+  .imgs img {
+    max-height: 150px; max-width: 100%; border-radius: 8px; border: 1px solid var(--line);
+    display: block; object-fit: cover;
+  }
+
+  .feed:not(.expanded) .group.extra { display: none; }
+  .more {
+    width: 100%; border: 0; border-top: 6px solid var(--gap);
+    background: var(--card); color: var(--accent); font-weight: 600;
+    font-size: 13px; padding: 13px; cursor: pointer;
+  }
+  .more:active { background: #faf0ef; }
+  .card-foot { padding: 11px 15px; display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--line); }
   .card-foot a { color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none; }
   .card-foot .mark { margin-left: auto; }
   .err { color: var(--new); font-size: 13px; padding: 14px 15px; }
   .empty { text-align: center; color: var(--sub); padding: 40px; }
-  details > summary { list-style: none; }
-  details > summary::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
@@ -100,12 +104,16 @@
 
 <script>
 const SEEN_KEY = "pcc_seen_v1";
-const dateFmt = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const EXP_KEY = "pcc_expanded_v1";
+const INITIAL_GROUPS = 4;
 
-function getSeen() {
-  try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch { return {}; }
-}
-function setSeen(obj) { localStorage.setItem(SEEN_KEY, JSON.stringify(obj)); }
+function getJSON(k, d) { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } }
+function setJSON(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+
+const getSeen = () => getJSON(SEEN_KEY, {});
+const setSeen = (o) => setJSON(SEEN_KEY, o);
+const getExpanded = () => new Set(getJSON(EXP_KEY, []));
+const setExpanded = (s) => setJSON(EXP_KEY, [...s]);
 
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -117,89 +125,128 @@ function timeAgo(iso) {
 function esc(s) { return (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 let latestData = null;
+let lastSig = null;
+
+function signature(data) {
+  return (data.threads || []).map(t => `${t.slug}:${t.ok ? t.latestCommentId : "x"}`).join("|");
+}
+
+function commentHTML(c, lastSeenId) {
+  const fresh = c.id > lastSeenId ? " fresh" : "";
+  const reply = c.depth > 0 ? " reply" : "";
+  const indent = c.depth > 0 ? ` style="margin-left:${Math.min(c.depth, 4) * 14}px"` : "";
+  const imgs = (c.images && c.images.length)
+    ? `<div class="imgs">${c.images.map(u =>
+        `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(u)}" alt="画像"></a>`).join("")}</div>`
+    : "";
+  const text = c.text ? `<div class="c-text">${esc(c.text)}</div>` : "";
+  return `<div class="cmt${fresh}${reply}"${indent}>
+      <div class="c-meta"><span class="author">${esc(c.author)}</span>
+      <span class="tag">${esc(c.date)}${c.depth > 0 ? " ・返信" : ""}</span></div>
+      ${text}${imgs}</div>`;
+}
+
+function buildCard(t, expandedSet) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  if (!t.ok) {
+    card.innerHTML = `<div class="card-head"><span class="name">${esc(t.label)}</span></div>
+      <div class="err">取得に失敗しました（次回の更新で再試行します）</div>
+      <div class="card-foot"><a href="${esc(t.url)}" target="_blank" rel="noopener">スレッドを開く ↗</a></div>`;
+    return { card, isNew: false };
+  }
+
+  const lastSeenId = getSeen()[t.slug] || 0;
+  const allComments = t.groups.flatMap(g => g.comments);
+  const newCount = allComments.filter(c => c.id > lastSeenId).length;
+  const isNew = t.latestCommentId > lastSeenId;
+  if (isNew) card.classList.add("has-new");
+
+  let hiddenGroups = 0;
+  const groupsHTML = t.groups.map((g, i) => {
+    const hasFresh = g.comments.some(c => c.id > lastSeenId);
+    const extra = (i >= INITIAL_GROUPS && !hasFresh);
+    if (extra) hiddenGroups++;
+    const body = g.comments.map(c => commentHTML(c, lastSeenId)).join("");
+    return `<div class="group${extra ? " extra" : ""}">${body}</div>`;
+  }).join("");
+
+  const expanded = expandedSet.has(t.slug);
+  card.innerHTML = `
+    <div class="card-head">
+      <span class="name">${esc(t.label)}</span>
+      ${isNew ? `<span class="badge-new">NEW ${newCount > 0 ? newCount : ""}</span>` : ""}
+      <span class="meta">${esc(t.totalCommentsText || "")} 件</span>
+    </div>
+    <div class="feed${expanded ? " expanded" : ""}">${groupsHTML}</div>
+    ${hiddenGroups > 0 ? `<button class="more" data-more>${expanded ? "閉じる" : `もっと見る（残り${hiddenGroups}スレッド）`}</button>` : ""}
+    <div class="card-foot">
+      <a href="${esc(t.url)}" target="_blank" rel="noopener">スレッドを開く ↗</a>
+      <button class="btn-ghost mark" data-mark="${esc(t.slug)}" data-id="${t.latestCommentId}">既読にする</button>
+    </div>`;
+
+  const moreBtn = card.querySelector("[data-more]");
+  if (moreBtn) moreBtn.addEventListener("click", () => {
+    const feedEl = card.querySelector(".feed");
+    const exp = feedEl.classList.toggle("expanded");
+    const set = getExpanded();
+    exp ? set.add(t.slug) : set.delete(t.slug);
+    setExpanded(set);
+    moreBtn.textContent = exp ? "閉じる" : `もっと見る（残り${hiddenGroups}スレッド）`;
+  });
+
+  return { card, isNew };
+}
 
 function render(data) {
   latestData = data;
-  const seen = getSeen();
+  lastSig = signature(data);
+  const scrollY = window.scrollY;
+  const expandedSet = getExpanded();
   const cards = document.getElementById("cards");
   cards.innerHTML = "";
   let anyNew = false;
 
-  for (const t of data.threads) {
-    const lastSeenId = seen[t.slug] || 0;
-    const card = document.createElement("div");
-    card.className = "card";
-
-    if (!t.ok) {
-      card.innerHTML = `<div class="card-head"><span class="name">${esc(t.label)}</span></div>
-        <div class="err">取得に失敗しました（次回の更新で再試行します）</div>
-        <div class="card-foot"><a href="${esc(t.url)}" target="_blank" rel="noopener">スレッドを開く ↗</a></div>`;
-      cards.appendChild(card);
-      continue;
-    }
-
-    const isNew = t.latestCommentId > lastSeenId;
-    if (isNew) { anyNew = true; card.classList.add("has-new"); }
-    const newCount = t.recent.filter(c => c.id > lastSeenId).length;
-
-    // Always show the newest INITIAL comments plus any unread ("fresh") ones;
-    // collapse the older remainder behind a "もっと見る" button.
-    const INITIAL = 8;
-    let shownCount = 0;
-    const feed = t.recent.map((c, i) => {
-      const isFresh = c.id > lastSeenId;
-      const visible = i < INITIAL || isFresh;
-      if (visible) shownCount++;
-      const cls = [isFresh ? "fresh" : "", c.isReply ? "reply" : "", visible ? "" : "extra"].filter(Boolean).join(" ");
-      return `<li class="${cls}">
-        <div class="c-meta"><span class="author">${esc(c.author)}</span>
-        <span class="tag">${esc(c.date)}${c.isReply ? " ・返信" : ""}</span></div>
-        <div class="c-text">${esc(c.text)}</div></li>`;
-    }).join("");
-    const hidden = t.recent.length - shownCount;
-
-    card.innerHTML = `
-      <div class="card-head" data-toggle>
-        <span class="name">${esc(t.label)}</span>
-        ${isNew ? `<span class="badge-new">NEW ${newCount > 0 ? newCount : ""}</span>` : ""}
-        <span class="meta">${esc(t.totalCommentsText || "")} 件</span>
-      </div>
-      <ul class="feed">${feed}</ul>
-      ${hidden > 0 ? `<button class="more" data-more>もっと見る（+${hidden}）</button>` : ""}
-      <div class="card-foot">
-        <a href="${esc(t.url)}" target="_blank" rel="noopener">スレッドを開く ↗</a>
-        <button class="btn-ghost mark" data-mark="${esc(t.slug)}" data-id="${t.latestCommentId}">既読にする</button>
-      </div>`;
-
-    const moreBtn = card.querySelector("[data-more]");
-    if (moreBtn) moreBtn.addEventListener("click", () => {
-      const feedEl = card.querySelector(".feed");
-      const expanded = feedEl.classList.toggle("expanded");
-      moreBtn.textContent = expanded ? "閉じる" : `もっと見る（+${hidden}）`;
-    });
-
+  for (const t of (data.threads || [])) {
+    const { card, isNew } = buildCard(t, expandedSet);
+    if (isNew) anyNew = true;
     cards.appendChild(card);
   }
+  if (!(data.threads || []).length) cards.innerHTML = '<div class="empty">データがありません</div>';
 
-  if (!data.threads.length) cards.innerHTML = '<div class="empty">データがありません</div>';
-
-  const checked = data.generatedAt ? `最終チェック: ${timeAgo(data.generatedAt)}` : "";
-  document.getElementById("status").textContent = checked + (anyNew ? " ・新着あり" : " ・新着なし");
-  document.title = (anyNew ? "🔴 " : "") + "ポケカ スレチェッカー";
-
-  cards.querySelectorAll("[data-mark]").forEach(b => b.addEventListener("click", e => {
+  cards.querySelectorAll("[data-mark]").forEach(b => b.addEventListener("click", () => {
     const seen = getSeen();
     seen[b.dataset.mark] = parseInt(b.dataset.id, 10);
     setSeen(seen);
     render(latestData);
   }));
+
+  updateStatus(data, anyNew);
+  window.scrollTo(0, scrollY); // keep position across re-renders
+}
+
+function updateStatus(data, anyNew) {
+  const checked = data.generatedAt ? `最終チェック: ${timeAgo(data.generatedAt)}` : "";
+  document.getElementById("status").textContent = checked + (anyNew ? " ・新着あり" : " ・新着なし");
+  document.title = (anyNew ? "🔴 " : "") + "ポケカ スレチェッカー";
 }
 
 async function load() {
   try {
     const res = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    render(await res.json());
+    const data = await res.json();
+    // Skip the costly rebuild when nothing changed, so an open/expanded card
+    // and your scroll position are never disturbed by background refreshes.
+    if (signature(data) === lastSig && latestData) {
+      latestData = data;
+      const seen = getSeen();
+      const anyNew = data.threads.some(t => t.ok && t.latestCommentId > (seen[t.slug] || 0));
+      updateStatus(data, anyNew);
+      return;
+    }
+    render(data);
   } catch (e) {
     document.getElementById("status").textContent = "読み込みエラー: " + e.message;
   }
@@ -215,7 +262,6 @@ document.getElementById("markAll").addEventListener("click", () => {
 });
 
 load();
-// Re-fetch while the page is open so it stays fresh between cron updates.
 setInterval(load, 3 * 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 </script>
