@@ -1,0 +1,33 @@
+name: update-threads
+
+on:
+  schedule:
+    # Every 15 minutes (UTC). GitHub may delay scheduled runs under load.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# Avoid overlapping runs if one is slow.
+concurrency:
+  group: update-threads
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Fetch threads and build data.json
+        run: node scripts/build-data.js
+
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools@15 deploy --only hosting --project pokecardchecker --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

@@ -1,0 +1,13 @@
+{
+  "name": "pokecardchecker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Checks gamenv.net Pokemon card threads for new posts and publishes a dashboard",
+  "scripts": {
+    "fetch": "node scripts/fetcher.js",
+    "build": "node scripts/build-data.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}
