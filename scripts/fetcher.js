@@ -156,19 +156,83 @@ function buildGroups(raw) {
   }
 
   const result = [];
-  for (const [, nodes] of groups) {
+  for (const [rootId, nodes] of groups) {
     const comments = nodes
       .map((n) => ({ id: n.id, author: n.author, date: n.date, text: n.text, images: n.images, depth: Math.min(depthOf(n), 4) }))
       .sort((a, b) => a.id - b.id); // parent ids are always < child ids
-    result.push({ latestId: Math.max(...comments.map((c) => c.id)), comments });
+    result.push({
+      rootId,
+      latestId: Math.max(...comments.map((c) => c.id)),
+      comments,
+    });
   }
-  result.sort((a, b) => b.latestId - a.latestId);
+  // Order threads by the BASE (root) comment time — newest base first — like the
+  // site, rather than by latest reply activity.
+  result.sort((a, b) => b.rootId - a.rootId);
   return result;
+}
+
+// Photos uploaded via wpDiscuz's media addon are NOT in the REST content; they
+// only appear in the rendered HTML page. Fetch it (the WordPress page sets a
+// cookie then 302-redirects to itself, so follow redirects manually carrying the
+// cookie jar) and map each comment id to its attached full-size image URLs.
+async function fetchHtml(url) {
+  const jar = new Map();
+  let cur = url;
+  for (let i = 0; i < 8; i++) {
+    const cookie = [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+    const res = await fetch(cur, {
+      redirect: "manual",
+      headers: { ...headers, Accept: "text/html", ...(cookie ? { Cookie: cookie } : {}) },
+    });
+    for (const c of res.headers.getSetCookie?.() ?? []) {
+      const [pair] = c.split(";");
+      const idx = pair.indexOf("=");
+      if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+    }
+    if (res.status >= 300 && res.status < 400) {
+      cur = new URL(res.headers.get("location"), cur).toString();
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTML HTTP ${res.status}`);
+    return res.text();
+  }
+  throw new Error("too many redirects");
+}
+
+function parseAttachments(html) {
+  const map = {};
+  const re = /data-comment-id='(\d+)'/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(html))) marks.push({ id: m[1], pos: m.index });
+  for (let k = 0; k < marks.length; k++) {
+    const end = k + 1 < marks.length ? marks[k + 1].pos : Math.min(html.length, marks[k].pos + 8000);
+    const seg = html.slice(marks[k].pos, end);
+    const reA = /<a\s+href='([^']+)'[^>]*class='[^']*wmu-attached-image-link/g;
+    let a;
+    const urls = [];
+    while ((a = reA.exec(seg))) urls.push(a[1].replace(/&#0?38;/g, "&"));
+    if (urls.length) map[marks[k].id] = (map[marks[k].id] || []).concat(urls);
+  }
+  return map;
 }
 
 async function fetchThread(thread) {
   const raw = await fetchRaw(thread);
   const groups = buildGroups(raw);
+
+  // Merge in wpDiscuz attachment photos (best-effort; ignore HTML failures).
+  try {
+    const attach = parseAttachments(await fetchHtml(thread.url));
+    for (const g of groups) {
+      for (const c of g.comments) {
+        const extra = attach[c.id];
+        if (extra) c.images = [...new Set([...c.images, ...extra])];
+      }
+    }
+  } catch (_) { /* attachments are a bonus; REST data still stands */ }
+
   const allIds = groups.flatMap((g) => g.comments.map((c) => c.id));
   return {
     slug: thread.slug,
