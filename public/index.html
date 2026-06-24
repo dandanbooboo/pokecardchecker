@@ -56,12 +56,19 @@
     padding: 10px 15px; border-bottom: 1px solid var(--line); font-size: 14px;
   }
   .feed li:last-child { border-bottom: 0; }
-  .feed li.reply { background: var(--reply); }
+  .feed li.reply .c-text { padding-left: 11px; border-left: 2px solid #d2d5d9; }
   .feed li.fresh { background: #fff6f5; }
   .feed li.fresh::before {
     content: "NEW"; color: var(--new); font-weight: 700; font-size: 10px;
     margin-right: 6px; vertical-align: 1px;
   }
+  .feed:not(.expanded) li.extra { display: none; }
+  .more {
+    width: 100%; border: 0; border-top: 1px solid var(--line);
+    background: var(--card); color: var(--accent); font-weight: 600;
+    font-size: 13px; padding: 12px; cursor: pointer;
+  }
+  .more:active { background: #faf0ef; }
   .c-meta { font-size: 11.5px; color: var(--sub); margin-bottom: 2px; }
   .c-meta .author { color: var(--ink); font-weight: 600; }
   .c-meta .tag { color: var(--sub); }
@@ -135,14 +142,21 @@ function render(data) {
     if (isNew) { anyNew = true; card.classList.add("has-new"); }
     const newCount = t.recent.filter(c => c.id > lastSeenId).length;
 
-    const feed = t.recent.map(c => {
-      const fresh = c.id > lastSeenId ? " fresh" : "";
-      const reply = c.isReply ? " reply" : "";
-      return `<li class="${(fresh + reply).trim()}">
-        <div class="c-meta"><span class="author">${esc(c.author || "匿名")}</span>
+    // Always show the newest INITIAL comments plus any unread ("fresh") ones;
+    // collapse the older remainder behind a "もっと見る" button.
+    const INITIAL = 8;
+    let shownCount = 0;
+    const feed = t.recent.map((c, i) => {
+      const isFresh = c.id > lastSeenId;
+      const visible = i < INITIAL || isFresh;
+      if (visible) shownCount++;
+      const cls = [isFresh ? "fresh" : "", c.isReply ? "reply" : "", visible ? "" : "extra"].filter(Boolean).join(" ");
+      return `<li class="${cls}">
+        <div class="c-meta"><span class="author">${esc(c.author)}</span>
         <span class="tag">${esc(c.date)}${c.isReply ? " ・返信" : ""}</span></div>
         <div class="c-text">${esc(c.text)}</div></li>`;
     }).join("");
+    const hidden = t.recent.length - shownCount;
 
     card.innerHTML = `
       <div class="card-head" data-toggle>
@@ -151,10 +165,19 @@ function render(data) {
         <span class="meta">${esc(t.totalCommentsText || "")} 件</span>
       </div>
       <ul class="feed">${feed}</ul>
+      ${hidden > 0 ? `<button class="more" data-more>もっと見る（+${hidden}）</button>` : ""}
       <div class="card-foot">
         <a href="${esc(t.url)}" target="_blank" rel="noopener">スレッドを開く ↗</a>
         <button class="btn-ghost mark" data-mark="${esc(t.slug)}" data-id="${t.latestCommentId}">既読にする</button>
       </div>`;
+
+    const moreBtn = card.querySelector("[data-more]");
+    if (moreBtn) moreBtn.addEventListener("click", () => {
+      const feedEl = card.querySelector(".feed");
+      const expanded = feedEl.classList.toggle("expanded");
+      moreBtn.textContent = expanded ? "閉じる" : `もっと見る（+${hidden}）`;
+    });
+
     cards.appendChild(card);
   }
 

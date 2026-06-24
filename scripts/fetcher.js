@@ -1,123 +1,104 @@
-// Fetches gamenv.net wpDiscuz threads and extracts the latest comments.
-// The site (WordPress) sets cookies then 302-redirects to the same URL.
-// Native fetch follows redirects but drops Set-Cookie, causing an infinite
-// loop, so we follow redirects manually and carry the cookie jar forward.
-
-const cheerio = require("cheerio");
+// Fetches gamenv.net threads via the WordPress REST comments API.
+// This returns clean JSON (top-level comments AND replies) ordered newest
+// first, with no cookie/redirect dance and no HTML scraping needed.
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-// The three threads we monitor. `slug` is also the Firestore document id.
+const API = "https://gamenv.net/tc/wp-json/wp/v2";
+const PER_PAGE = 60; // how many recent comments to pull per thread (max 100)
+
+// The three threads we monitor. `postId` is the WordPress post the comment
+// thread belongs to (stable; resolvable via ?slug= if it ever changes).
 const THREADS = [
-  { slug: "yodobashi", url: "https://gamenv.net/tc/yodobashi/", label: "ヨドバシカメラ" },
-  { slug: "biccamera", url: "https://gamenv.net/tc/biccamera/", label: "ビックカメラ" },
-  { slug: "pokesen", url: "https://gamenv.net/tc/pokesen/", label: "ポケモンセンター" },
+  { slug: "yodobashi", postId: 78763, url: "https://gamenv.net/tc/yodobashi/", label: "ヨドバシカメラ" },
+  { slug: "biccamera", postId: 78776, url: "https://gamenv.net/tc/biccamera/", label: "ビックカメラ" },
+  { slug: "pokesen", postId: 78787, url: "https://gamenv.net/tc/pokesen/", label: "ポケモンセンター" },
 ];
 
-// GET a URL, manually following redirects while accumulating cookies.
-async function fetchWithCookies(startUrl, maxRedirects = 10) {
-  const jar = new Map(); // name -> value
-  let url = startUrl;
+const headers = { "User-Agent": UA, Accept: "application/json" };
 
-  for (let i = 0; i <= maxRedirects; i++) {
-    const cookieHeader = [...jar.entries()]
-      .map(([k, v]) => `${k}=${v}`)
-      .join("; ");
-
-    const res = await fetch(url, {
-      redirect: "manual",
-      headers: {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ja,en;q=0.9",
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-    });
-
-    // Collect any cookies the server set.
-    for (const c of res.headers.getSetCookie?.() ?? []) {
-      const [pair] = c.split(";");
-      const idx = pair.indexOf("=");
-      if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
-    }
-
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get("location");
-      if (!loc) throw new Error(`Redirect with no Location from ${url}`);
-      url = new URL(loc, url).toString();
-      continue;
-    }
-
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-    return res.text();
-  }
-  throw new Error(`Too many redirects for ${startUrl}`);
+// Resolve a post id from its slug as a fallback if the hard-coded id is wrong.
+async function resolvePostId(slug) {
+  const res = await fetch(`${API}/posts?slug=${encodeURIComponent(slug)}&_fields=id`, { headers });
+  if (!res.ok) throw new Error(`slug lookup HTTP ${res.status}`);
+  const arr = await res.json();
+  if (!Array.isArray(arr) || !arr.length) throw new Error(`no post for slug ${slug}`);
+  return arr[0].id;
 }
 
-// Parse the wpDiscuz comment markup out of a thread page.
-function parseThread(html) {
-  const $ = cheerio.load(html);
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", "#039": "'", nbsp: " " };
 
-  const title = $("title").first().text().trim();
-
-  // Total comment count, e.g. the "37.6K" shown in the thread head.
-  let totalCommentsText = $(".wpd-thread-info .wpdtc, .wpd-thread-info [class*='wpdtc']")
-    .first()
-    .text()
+// content.rendered is HTML; turn it into plain display text.
+function htmlToText(html) {
+  if (!html) return "";
+  let hasImg = /<img\b/i.test(html);
+  let t = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<img\b[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+      if (ENTITIES[e]) return ENTITIES[e];
+      if (e[0] === "#") {
+        const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+      }
+      return m;
+    })
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
+  if (hasImg) t = (t ? t + " " : "") + "🖼";
+  return t;
+}
 
-  const comments = [];
-  // Every comment (top-level and replies) has an inner element id="comment-N".
-  $("[id^='comment-']").each((_, el) => {
-    const node = $(el);
-    const idAttr = node.attr("id") || "";
-    const m = idAttr.match(/^comment-(\d+)$/);
-    if (!m) return;
-    const id = parseInt(m[1], 10);
+// "2026-06-24T21:40:59" (site-local JST) -> "6月24日 21:40"
+function formatDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || "");
+  if (!m) return iso || "";
+  return `${+m[2]}月${+m[3]}日 ${m[4]}:${m[5]}`;
+}
 
-    // The author/date/text live inside the wpd-comment wrapper.
-    const wrap = node.closest(".wpd-comment");
-    const author = wrap.find(".wpd-comment-author").first().text().trim();
-    const date = wrap.find(".wpd-comment-date").first().attr("title") || "";
-    const text = wrap
-      .find(".wpd-comment-text")
-      .first()
-      .text()
-      .replace(/\s+/g, " ")
-      .trim();
-    const isReply = wrap.parents(".wpd-reply").length > 0;
-
-    comments.push({ id, author, date, text, isReply });
-  });
-
-  // De-dup by id (closest() can match the same wrapper twice in odd markup).
-  const byId = new Map();
-  for (const c of comments) if (!byId.has(c.id)) byId.set(c.id, c);
-  const all = [...byId.values()].sort((a, b) => b.id - a.id);
-
-  const latestCommentId = all.length ? all[0].id : 0;
-
-  return {
-    title,
-    totalCommentsText,
-    latestCommentId,
-    recent: all.slice(0, 15), // newest 15 for the dashboard feed
-  };
+function commentsUrl(postId) {
+  return `${API}/comments?post=${postId}&per_page=${PER_PAGE}&order=desc&orderby=date&_fields=id,parent,author_name,date,content`;
 }
 
 async function fetchThread(thread) {
-  const html = await fetchWithCookies(thread.url);
-  const parsed = parseThread(html);
+  let res = await fetch(commentsUrl(thread.postId), { headers });
+
+  // Self-heal if the hard-coded post id stopped matching.
+  if (res.ok) {
+    const peek = await res.clone().json();
+    if (!Array.isArray(peek) || peek.length === 0) {
+      const pid = await resolvePostId(thread.slug);
+      res = await fetch(commentsUrl(pid), { headers });
+    }
+  }
+  if (!res.ok) throw new Error(`comments HTTP ${res.status}`);
+
+  const total = res.headers.get("x-wp-total");
+  const raw = await res.json();
+  if (!Array.isArray(raw)) throw new Error("unexpected API response");
+
+  const comments = raw
+    .map((c) => ({
+      id: c.id,
+      author: (c.author_name || "").trim() || "匿名",
+      date: formatDate(c.date),
+      text: htmlToText(c.content && c.content.rendered),
+      isReply: (c.parent || 0) > 0,
+    }))
+    .sort((a, b) => b.id - a.id);
+
   return {
     slug: thread.slug,
     url: thread.url + "#help",
     label: thread.label,
-    title: parsed.title,
-    totalCommentsText: parsed.totalCommentsText,
-    latestCommentId: parsed.latestCommentId,
-    recent: parsed.recent,
+    totalCommentsText: total ? Number(total).toLocaleString("en-US") : "",
+    latestCommentId: comments.length ? comments[0].id : 0,
+    recent: comments,
     checkedAt: new Date().toISOString(),
     ok: true,
   };
@@ -142,9 +123,8 @@ async function fetchAll() {
   return results;
 }
 
-module.exports = { THREADS, fetchThread, fetchAll, parseThread, fetchWithCookies };
+module.exports = { THREADS, fetchThread, fetchAll };
 
-// Run directly: `node scripts/fetcher.js` prints JSON for all threads.
 if (require.main === module) {
   fetchAll()
     .then((r) => console.log(JSON.stringify(r, null, 2)))
