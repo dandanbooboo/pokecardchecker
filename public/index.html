@@ -174,8 +174,8 @@ function buildCard(t, expandedSet) {
   const isNew = t.latestCommentId > lastSeenId;
   if (isNew) card.classList.add("has-new");
 
-  // Per-thread reply open/closed overrides (survive re-renders). Replies default
-  // to collapsed to save space, but auto-open when they contain unread comments.
+  // Per-thread reply open/closed overrides (survive re-renders). Replies always
+  // default to collapsed; only an explicit toggle by the user opens them.
   const replyOpen = window.__replyOpen || (window.__replyOpen = new Map());
 
   let hiddenGroups = 0;
@@ -191,7 +191,7 @@ function buildCard(t, expandedSet) {
       const key = t.slug + ":" + g.rootId;
       const freshN = replies.filter(c => c.id > lastSeenId).length;
       const override = replyOpen.get(key);
-      const open = override === undefined ? freshN > 0 : override;
+      const open = override === true;
       const label = open ? "返信を閉じる ▲" : `返信 ${replies.length}件を表示${freshN ? `（新着${freshN}）` : ""} ▼`;
       repliesBlock =
         `<button class="rtoggle" data-rkey="${esc(key)}" data-n="${replies.length}" data-f="${freshN}">${label}</button>` +
