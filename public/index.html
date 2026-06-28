@@ -67,10 +67,25 @@
   .c-meta .rt { color: #1a73e8; font-weight: 600; }
   .c-text { white-space: pre-wrap; word-break: break-word; }
   .imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .imgs a { display: block; }
   .imgs img {
     max-height: 150px; max-width: 100%; border-radius: 8px; border: 1px solid var(--line);
-    display: block; object-fit: cover;
+    display: block; object-fit: cover; cursor: zoom-in;
+  }
+
+  /* In-page image viewer (lightbox) — opens photos on the site, not externally */
+  .lightbox {
+    position: fixed; inset: 0; z-index: 1000; display: none;
+    align-items: center; justify-content: center; padding: 20px;
+    background: rgba(0, 0, 0, 0.85); cursor: zoom-out;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 100%; max-height: 100%; border-radius: 8px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5); cursor: default;
+  }
+  .lightbox .lb-close {
+    position: absolute; top: 14px; right: 18px; color: #fff; font-size: 30px;
+    line-height: 1; background: none; border: 0; cursor: pointer; opacity: 0.85;
   }
 
   .feed:not(.expanded) .group.extra { display: none; }
@@ -98,7 +113,7 @@
 <header>
   <div>
     <h1>ポケカ スレチェッカー</h1>
-    <div class="sub">ゲットナビ 3スレッド 新着チェック</div>
+    <div class="sub">ゲットナビ 4スレッド 新着チェック</div>
   </div>
   <button class="btn" id="refresh">更新</button>
 </header>
@@ -109,6 +124,11 @@
   </div>
   <div id="cards"></div>
 </main>
+
+<div id="lightbox" class="lightbox">
+  <button class="lb-close" aria-label="閉じる">×</button>
+  <img alt="画像">
+</div>
 
 <script>
 const SEEN_KEY = "pcc_seen_v1";
@@ -145,7 +165,7 @@ function commentHTML(c, lastSeenId) {
   const indent = c.depth > 0 ? ` style="margin-left:${Math.min(c.depth, 4) * 14}px"` : "";
   const imgs = (c.images && c.images.length)
     ? `<div class="imgs">${c.images.map(u =>
-        `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(u)}" alt="画像"></a>`).join("")}</div>`
+        `<img class="ph" loading="lazy" src="${esc(u)}" data-full="${esc(u)}" alt="画像">`).join("")}</div>`
     : "";
   const text = c.text ? `<div class="c-text">${esc(c.text)}</div>` : "";
   const replyTag = c.replyTo
@@ -286,6 +306,23 @@ async function load() {
     document.getElementById("status").textContent = "読み込みエラー: " + e.message;
   }
 }
+
+// In-page image viewer. Delegated off document so it covers images added by any
+// re-render. Clicking a photo opens it in the overlay instead of a new tab.
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = lightbox.querySelector("img");
+function closeLightbox() { lightbox.classList.remove("open"); lightboxImg.src = ""; }
+document.getElementById("cards").addEventListener("click", (e) => {
+  const img = e.target.closest("img.ph");
+  if (!img) return;
+  lightboxImg.src = img.dataset.full || img.src;
+  lightbox.classList.add("open");
+});
+lightbox.addEventListener("click", (e) => {
+  // Close on backdrop or the × button; clicks on the image itself do nothing.
+  if (e.target !== lightboxImg) closeLightbox();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLightbox(); });
 
 document.getElementById("refresh").addEventListener("click", load);
 document.getElementById("markAll").addEventListener("click", () => {
