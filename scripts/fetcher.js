@@ -14,6 +14,7 @@ const THREADS = [
   { slug: "yodobashi", postId: 78763, url: "https://gamenv.net/tc/yodobashi/", label: "ヨドバシカメラ" },
   { slug: "biccamera", postId: 78776, url: "https://gamenv.net/tc/biccamera/", label: "ビックカメラ" },
   { slug: "pokesen", postId: 78787, url: "https://gamenv.net/tc/pokesen/", label: "ポケモンセンター" },
+  { slug: "stores", postId: 50167, url: "https://gamenv.net/tc/stores/", label: "量販店・コンビニ" },
 ];
 
 const headers = { "User-Agent": UA, Accept: "application/json" };
